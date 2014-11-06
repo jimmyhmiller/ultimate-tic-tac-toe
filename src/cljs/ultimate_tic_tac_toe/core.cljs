@@ -15,6 +15,7 @@
    :bm bm
    :br br})
 
+
 (defonce app-state (atom {:tl (generate-board [:_ :_ :_ :_ :_ :_ :_ :_ :_])
                           :tm (generate-board [:_ :_ :_ :_ :_ :_ :_ :_ :_])
                           :tr (generate-board [:_ :_ :_ :_ :_ :_ :_ :_ :_])
@@ -28,28 +29,37 @@
                           :current-player :X
                           :current-board :_}))
 
+
 (defn board-full? [board]
   (not-any? #(= % :_) (vals board)))
 
+
+(defn active-board? [app board]
+  (or
+   (= (app :current-board) board)
+   (= (app :current-board) :_)
+   (board-full? (app (app :current-board)))))
+
+
+
+
 (def switch-players {:X :O :O :X})
 
-(defn place-piece [board spot]
+
+(defn place-piece [app board spot]
   (when (and
-         (= (-> @app-state board spot) :_)
+         (= (-> @app board spot) :_)
          (not= board :big)
-         (or (= (@app-state :current-board) board)
-             (= (@app-state :current-board) :_)
-             (board-full? (@app-state (@app-state :current-board)))))
-    (swap! app-state
-           (fn [state]
-             (-> state
-                 (assoc-in [board spot] (@app-state :current-player))
-                 (assoc :current-player (switch-players
-                                         (@app-state :current-player)))
-                 (assoc :current-board spot))))))
+         (active-board? @app board))
+    (let [current-player (@app :current-player)]
+      (om/update! app [board spot] current-player)
+      (om/transact! app :current-player switch-players)
+      (om/update! app [:current-board] spot))))
+
 
 (defn combine-keywords [k1 k2]
   (keyword (str (name k1) (name k2))))
+
 
 (defn mark-cell [mark size]
   (cond (= mark :_)
@@ -65,16 +75,18 @@
          :background-repeat "no-repeat"
          :background-position "60% 60%"}))
 
-(defn create-cell [board spot mark size]
+
+(defn create-cell [app board spot mark size]
   [:span {:class (name spot)
           :style
           (merge
            {:height size
             :width size}
            (mark-cell mark size))
-          :on-click #(place-piece board spot)}])
+          :on-click #(place-piece app board spot)}])
 
-(defn create-row [board row marks cell-size]
+
+(defn create-row [app board row marks cell-size]
   [:div.row
    {:style
     {:height cell-size
@@ -83,14 +95,12 @@
     (fn [spot]
       (let [spot (combine-keywords row spot)
             mark (marks spot)]
-        (create-cell board spot mark cell-size)))
+        (create-cell app board spot mark cell-size)))
     [:l :m :r])])
 
-(defn create-board [board app {:keys [x y] :as position} cell-size]
-  (let [active? (or
-                 (= (app :current-board) board)
-                 (= (app :current-board) :_)
-                 (board-full? (app (app :current-board))))]
+
+(defn create-board [app board {:keys [x y] :as position} cell-size]
+  (let [active? (active-board? app board)]
     [:div {:style
            {:position "absolute"
             :top y
@@ -98,18 +108,22 @@
            :class (if active? "active" "")}
      (map
       (fn [row position]
-        (create-row board row (app board) cell-size))
+        (create-row app board row (app board) cell-size))
       [:t :m :b])]))
 
+
 (defn create-ultimate-boards [app {:keys [x y] :as position} cell-size]
-  (map
-   (fn [board board-position]
-     (create-board board app board-position (/ cell-size 4)))
-   [:tl :ml :bl :tm :mm :bm :tr :mr :br]
-   (for [x1 (range 0 (* cell-size 3) cell-size)
-         y1 (range 0 (* cell-size 3) cell-size)]
-     {:x (+ (+ x1 x) (* cell-size 0.125))
-      :y (+ (+ y1 y) (* cell-size 0.125))})))
+  [:div
+   [:span.big (create-board app :big position cell-size)]
+   (map
+    (fn [board board-position]
+      (create-board app board board-position (/ cell-size 4)))
+    [:tl :ml :bl :tm :mm :bm :tr :mr :br]
+    (for [x1 (range 0 (* cell-size 3) cell-size)
+          y1 (range 0 (* cell-size 3) cell-size)]
+      {:x (+ (+ x1 x) (* cell-size 0.125))
+       :y (+ (+ y1 y) (* cell-size 0.125))}))])
+
 
 (defn main []
   (om/root
@@ -117,8 +131,6 @@
      (reify
        om/IRender
        (render [_]
-               (html [:div
-                      [:span.big (create-board :big app {:x 0 :y 0} 230)]
-                      (create-ultimate-boards app {:x 0 :y 0} 230)]))))
+               (html (create-ultimate-boards app {:x 0 :y 0} 230)))))
    app-state
    {:target (. js/document (getElementById "app"))}))

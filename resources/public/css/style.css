@@ -28,10 +28,12 @@ div div.active span {
   border-color: #000;
 }
 
+
 .tl {
   border-right: 1px solid #ddd;
   border-bottom: 1px solid #ddd;
   display:inline-block;
+
 }
 .tm {
   border-right: 1px solid #ddd;

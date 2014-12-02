@@ -16,6 +16,7 @@
    :br br})
 
 
+
 (defonce app-state (atom {:tl (generate-board [:_ :_ :_ :_ :_ :_ :_ :_ :_])
                           :tm (generate-board [:_ :_ :_ :_ :_ :_ :_ :_ :_])
                           :tr (generate-board [:_ :_ :_ :_ :_ :_ :_ :_ :_])
@@ -28,6 +29,60 @@
                           :big (generate-board [:_ :_ :_ :_ :_ :_ :_ :_ :_])
                           :current-player :X
                           :current-board :_}))
+
+
+(def winning-positions
+  [[:tr :tm :tl]
+   [:mr :mm :ml]
+   [:br :bm :bl]
+   [:tr :mr :br]
+   [:tm :mm :bm]
+   [:tl :ml :bl]
+   [:tl :mm :br]
+   [:bl :mm :tr]])
+
+(defn positions-from-board [board pos]
+  (vals (select-keys board pos)))
+
+(defn winner [row]
+  (when (and
+         (nil? (some #{:_} row))
+         (= (count (distinct row)) 1) )
+    (first row)))
+
+
+(def app-history (atom [@app-state]))
+(def replaying (atom false))
+
+
+(add-watch app-state :history
+           (fn [_ _ _ n]
+             (when-not (or
+                        (= (last @app-history) n)
+                        @replaying)
+               (swap! app-history conj n))))
+
+
+(defn undo []
+  (when (> (count @app-history) 1)
+    (swap! app-history pop)
+    (reset! app-state (last @app-history))))
+
+
+(defn replay
+  ([] (replay @app-history))
+  ([history]
+   (if (empty? history)
+     (reset! replaying false)
+     (do
+       (reset! replaying true)
+       (reset! app-state (first history))
+       (js/setTimeout (partial replay (rest history)) 1000)))))
+
+
+(defn replay-n [n]
+  (let [history @app-history]
+    (replay (drop (- (count history) (inc n)) history))))
 
 
 (defn board-full? [board]
@@ -43,7 +98,8 @@
 
 
 
-(def switch-players {:X :O :O :X})
+(def switch-players {:X :O
+                     :O :X})
 
 
 (defn place-piece [app board spot]
@@ -52,9 +108,10 @@
          (not= board :big)
          (active-board? @app board))
     (let [current-player (@app :current-player)]
-      (om/update! app [board spot] current-player)
-      (om/transact! app :current-player switch-players)
-      (om/update! app [:current-board] spot))))
+      (om/update! app (-> @app
+                          (assoc-in [board spot] current-player)
+                          (assoc :current-player (switch-players current-player))
+                          (assoc :current-board spot))))))
 
 
 (defn combine-keywords [k1 k2]
